@@ -1,0 +1,1285 @@
+
+            --= 8086/8088 instructions =--
+::  as adapted from the Intel 8086 Family User's Manual ::
+
+---= Introduction =---
+
+This document is a simple compilation of various tables and info on the 8086 instruction
+set as described in the 8086 family users manual. It exists as a rescource for 8086
+programmers as well as compiler/assembler developers.
+
+---= Identifiers =---
+MOD          : mode field
+REG          : register field
+R/M          : register/memory field
+SR           : segment register code:
+  00         : ES
+  01         : CS
+  10         : SS
+  11         : DS
+W,S,D,V,Z    : single-bit instruction fields
+DATA-8       : 8-bit immediate constant
+DATA-SX      : sign-extended 8-bit immediate (to 16-bit)
+DATA-LO      : low order byte of 16 bit immediate
+DATA-HI      : high order byte of 16 bit immediate
+DISP-LO      : low order byte of optional 8/16-bit unsigned dispacement MOD shows if present
+DISP-HI      : high order byte of optional 8/16-bit unsigned dispacement MOD shows if present
+IP-LO        : low order byte of new IP value
+IP-HI        : high order byte of new IP value
+CS-LO        : low order byte of new CS value
+CS-HI        : high order byte of new CS value
+IP-INC8      : 8-bit signed increment to IP
+IP-INC-LO    : low order byte of 16-bit signed increment to IP
+IP-INC-HI    : high order byte of 16-bit signed increment to IP
+ADDR-LO      : low order byte of 16-bit direct address (EA not calculated)
+ADDR-HI      : high order byte of 16-bit direct address (EA not calculated)
+XXX          : first 3 bits of ESC opcode
+YYY          : second 3 bits of ESC opcode
+REG8         : 8-bit general register operand
+REG16        : 16-bit general register operand
+MEM8         : 8-bit general register operand
+MEM16        : 16-bit general register operand
+IMM8         : 8-bit immediate operand
+IMM16        : 16-bit immediate operand
+SEGREG       : segment register operand
+DEST-STR8    : byte string addressed by DI
+SRC-STR8     : byte string addressed by SI
+DEST-STR16   : word string addressed by DI
+SRC-STR16    : word string addressed by SI
+SHORT-LABEL  : label within +- 127 bytes of instruction
+NEAR-PROC    : procedure in current code segment
+FAR-PROC     : procedure in another code segment
+NEAR-LABEL   : label in current code segment but further than +-128 bytes from instruction
+FAR-LABEL    : label in another code segment
+SOURCE-TABLE : XLAT translation table addressed by BX
+OPCODE       : ESC opcode operand
+SOURCE       : ESC register or memory operand
+
+Instruction bytes:
+  [ Byte 1  0-5   6 7] [ Byte 2  0-1 2-4 5-7 ] [     Byte 3    ] [     Byte 4     ]
+  [        OPCODE D W] [         MOD REG R/M ] [ LOW DISP/DATA ] [ HIGH DISP/DATA ]
+  [  Byte 5  ] [  Byte 6   ]
+  [ LOW DATA ] [ HIGH DATA ]
+
+MOD table:
+  00: Memory mode, no displacement follows (except when R/M = 110, then 16-bit displacement)
+  01: Memory mode, 8-bit displacement follows
+  10: Memory mode, 16-bit displacement follows
+  11: Register mode, no displacement
+
+REG table:
+  i-------------i
+  |REG| W0 | W1 |
+  |000| AL | AX |
+  |001| CL | CX |
+  |010| DL | DX |
+  |011| BL | BX |
+  |100| AH | SP |
+  |101| CH | BP |
+  |110| DH | SI |
+  |111| BH | DI |
+  l-------------l
+
+R/M table:
+  i---MOD=11----i
+  |R/M| W0 | W1 |
+  |000| AL | AX |
+  |001| CL | CX |
+  |010| DL | DX |
+  |011| BL | BX |
+  |100| AH | SP |
+  |101| CH | BP |
+  |110| DH | SI |
+  |111| BH | DI |
+  i---EA------------------------------i
+  |R/M| MOD=00 | MOD=01   | MOD=10    |
+  |000| BX+SI  | BX+SI+D8 | BX+SI+D16 |
+  |001| BX+DI  | BX+DI+D8 | BX+DI+D16 |
+  |010| BP+SI  | BP+SI+D8 | BP+SI+D16 |
+  |011| BP+DI  | BP+DI+D8 | BP+DI+D16 |
+  |100| SI     | SI+D8    | SI+D16    |
+  |101| DI     | DI+D8    | DI+D16    |
+  |110| ADDR   | BP+D8    | BP+D16    |
+  |111| BX     | BX+D8    | BX+D16    |
+  l-----------------------------------l
+
+Flag Storage format:
+U = undefined
+O = overflow
+D = direction
+I = interrupt
+T = trap
+S = sign
+Z = zero
+A = auxiliary
+P = parity
+C = carry
+.__________________________________________.
+|          |0|1|2|3|4|5|6|7|8|9|A|B|C|D|E|F|
+|LAHF /SAHF|C|U|P|U|A|U|Z|S| | | | | | | | |
+|PUSHF/POPF|C|U|P|U|A|U|Z|S|T|I|D|O|U|U|U|U|
+l------------------------------------------l
+
+
+Key
+  <mnemonic> (<name>): <flags>
+    (arg1, arg2, ..., argn)
+    <description>
+    *(<opcode> [MOD] [REG] [R/M] <args>)
+
+Note that if arguments are not present in the description, none must be provided.
+
+Flags are notated as the flag mnemonic (trap = T, direction = D, interrupt-enable = I,
+overflow = O, sign = S, zero = Z, auxiliary = A, parity = P, carry = C) concatenated to the
+form of set (flags which are omitted are not altered) where 0 denotes clear, 1 denotes set,
+x denotes set or cleared according to result, u denotes undefined, and r denotes restored
+to previously saved value.
+
+---= Notes relevant to instruction groups =---
+Note that various conditional jump instructions have multiple mnemonics, we have
+used the first alphabetical order, what follows (before our table) is the conversions
+between these:
+
+JA     <--> JNBE
+JAE    <--> JNB
+JB     <--> JNAE
+JBE    <--> JNA
+JE     <--> JZ
+JG     <--> JNLE
+JGE    <--> JNL
+JL     <--> JNGE
+JLE    <--> JNG
+JNE    <--> JNZ
+JNP    <--> JPO
+JP     <--> JPE
+LOOPE  <--> LOOPZ
+LOOPNE <--> LOOPNZ
+REPE   <--> REPE
+REPNE  <--> REPNE
+
+The following logic/arithmetic operations are also
+equivalent:
+
+SAL <--> SHL
+
+Note that the mnemonics MOVSB and MOVSW are
+simply the instruction MOVS where the W bit is set
+accordingly.
+
+Note that the rotation and shift instructions must only
+take the constant `1` or the register CX.
+
+Note that the REP instructions use CX to mean the number
+of times it shall repeat, SI is to mean the source pointer
+for some string, and DI for the destination. Also, the
+following conversions hold true:
+
+REPE  <--> REPZ
+REPNE <--> REPNZ
+
+There are also "Segment override prefixes" which may be
+used with instructions which access non-stack memory,
+the opcodes and there associated segment follow:
+
+[26] --> ES:
+[2E] --> CS:
+[36] --> SS:
+[3E] --> DS:
+
+
+---= Instruction table (ordered by mnemonic name alphabetically) =---
+
+AAA(ASCII Adjust for Addition      ): Ou Su Zu Ax Pu Cx
+        Changes the contents of AL to a valid BCD number
+        with the high order nibble zeroed.
+        [37]
+            AAA
+AAD(ASCII Adjust for Division      ): Ou Sx Zx Au Px Cu
+        Modifies the numerator in AL before dividing two
+        valid BCD operations so that the quotient from
+        this division will be a valid unpacked decimal
+        AH must be zero for the subsequent DIV to provide
+        the correct result. The quotient is then returned
+        in AL and the remainder in AH.
+        [D5]
+            AAD
+AAM(ASCII Adjust for Multiplication): Ou Sx Zx Au Px Cu
+        Corrects the result of a multiplication between
+        two BCD digits with their high-order nibble
+        zeroed, the result is placed within AH and AL,
+        that being the valid two digit BCD value.
+        [D4]
+            AAM
+AAS(ASCII Adjust for Subtraction   ): Ou Su Zu Ax Pu Cx
+        Corrects the result of a previous subtraction
+        of two BCD digits stored in seperate bytes with
+        the high order nibble zeroed. Setting AL to the
+        sum of these two digits with the high order nibble
+        null.
+        [3F]
+            AAS
+ADC(ADd with Carry): Ox Sx Zx Ax Px Cx
+        (destination, source)
+        The sum of two operands and the carry bit,
+        both operands may be signed or unsigned binary
+        numbers (see AAA and DAA).
+        [10] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            ADC REG8/MEM8, REG8
+        [11] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            ADC REG16/MEM16, REG16
+        [12] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            ADC REG8, REG8/MEM8
+        [13] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            ADC REG16, REG16/MEM16
+        [14] [DATA-8]
+            ADC AL, IMM8
+        [15] [DATA-LO] [DATA-HI]
+            ADC AL, IMM16
+        [80] [MOD 010 R/M] [DISP-LO] [DISP-HI] [DATA-8]
+            ADC REG8/MEM8, IMM8
+        [81] [MOD 010 R/M] [DISP-LO] [DISP-HI]
+         [DATA-LO] [DATA-HI]
+            ADC REG16/MEM16, IMM16
+        [82] [MOD 010 R/M] [DISP-LO] [DISP-HI] [DATA-8]
+            ADC REG8/MEM8, IMM8
+        [83] [MOD 010 R/M] [DISP-LO] [DISP-HI] [DATA-SX]
+            ADC REG16/MEM16, IMM8
+ADD(ADD): Ox Sx Zx Ax Px Cx
+        (destination, srource)
+        The sum of two operands, both operands may
+        be signed or unsigned binary numbers.
+        [00] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            ADD REG8/MEM8, REG8
+        [01] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            ADD REG16/MEM16, REG16
+        [02] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            ADD REG8, REG8/MEM8
+        [03] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            ADD REG16, REG16/MEM16
+        [04] [DATA-8]
+            ADD AL, IMM8
+        [05] [DATA-LO] [DATA-HI]
+            ADD AX, IMM16
+        [80] [MOD 000 R/M] [DISP-LO] [DISP-HI] [DATA-8]
+            ADD REG8/MEM8, IMM8
+        [81] [MOD 000 R/M] [DISP-LO] [DISP-HI]
+         [DATA-LO] [DATA-HI]
+            ADD REG16/MEM16, IMM16
+        [82] [MOD 000 R/M] [DISP-LO] [DISP-HI] [DATA-8]
+            ADD REG8/MEM8, IMM8
+        [83] [MOD 000 R/M] [DISP-LO] [DISP-HI] [DATA-SX]
+            ADD REG16/MEM16, IMM8
+AND(AND): O0 Sx Zx Au Px C0
+        (destination, source)
+        Performs a logical and of the two operands.
+        [20] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            AND REG8/MEM8, REG8
+        [21] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            AND REG16/MEM16, REG16
+        [22] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            AND REG8, REG8/MEM8
+        [23] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            AND REG16, REG16/MEM16
+        [24] [DATA-8]
+            AND AL, IMM8
+        [25] [DATA-LO] [DATA-HI]
+            AND AX, IMM16
+        [80] [MOD 100 R/M] [DISP-LO] [DISP-HI] [DATA-8]
+            AND REG8/MEM8, IMM8
+        [81] [MOD 100 R/M] [DISP-LO] [DISP-HI]
+         [DATA-LO] [DATA-HI]
+            AND REG16/MEM16, IMM16
+CALL(CALL):
+        (procedure address)
+        CALL activates an out-of-line procedure saving
+        information on the stack to permit a RET
+        instruction to transfer control back to the
+        original CALL. There are different CALL
+        instructions depending on whether the programmer
+        has defined the procedure name as NEAR or FAR.
+        For control to return properly the type of
+        CALL instruction must match the kind of RET
+        instruction. The processor adjusts IP to point
+        to the next instruction *before* saving it on
+        the stack.
+        For an intrasegment direct CALL, IP is pushed
+        onto the stack. The relative displacement (up
+        to +-32k) of the target procedure from the CALL
+        is then added to IP.
+        An intrasegment indirect CALL may be made through
+        memory or through a register, IP is pushed onto
+        the stack and IP is replaced by the value within
+        the register/memory.
+        For an intersegment direct CALL, CS is pushed onto
+        the stack, IP is then pushed onto the stack. CS
+        is replaced by the segment word contained in the
+        instruction and IP is replaced by the specified
+        word.
+        An intersegment indirect CALL pushes CS and IP
+        to the stack, and CS is replaced by the second
+        word of the double-word memory pointer, IP
+        is replaced by the content of the first word
+        of the double-word pointer referenced by the
+        instruction.
+        [9A] [DISP-LO] [DISP-HI] [SEG-LO] [SEG-HI]
+            CALL FAR_PROC
+        [E8] [IP-INC-LO] [IP-INC-HI]
+            CALL NEAR-PROC
+        [FF] [MOD 010 R/M] [DISP-LO] [DISP-HI]
+            CALL REG16/MEM16 (intra)
+        [FF] [MOD 011 R/M] [DISP-LO] [DISP-HI]
+            CALL MEM16 (inter)
+CBW(Convert Byte to Word):
+        Extends the sign of the byte in AL throughout AH
+        so that a signed double-length dividend may be
+        generated before a byte division.
+        [98]
+            CBW
+CLC(CLear Carry flag): C0
+        Clears CF.
+        [F8]
+            CLC
+CLD(CLear Direction flag): D0
+        Clears DF, causing string instructions to
+        increment SI and DI rather than DI.
+        [FC]
+            CLD
+CLI(CLear Interrupt flag): I0
+        Clears IF. Causing the 8088/8086 to not recognise
+        the INTR line, thusly, maskable interrupts are
+        disabled.
+        [FA]
+            CLI
+CMC(CoMplement Carry flag): Cx
+        Flips CF.
+        [F5]
+            CMC
+CMP(CoMPare): Ox Sx Zx Ax Px Cx
+        (destination, source)
+        Subtract the source from the destination, without
+        storing the result in the destination. This sets
+        the flags as though a subtraction had taken place.
+        [38] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            CMP REG8/MEM8, REG8
+        [39] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            CMP REG16/MEM16, REG16
+        [3A] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            CMP REG8, REG8/MEM8
+        [3B] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            CMP REG16, REG16/MEM16
+        [3C] [DATA-8]
+            CMP AL, IMM8
+        [3D] [DATA-16]
+            CMP AX, IMM16
+        [80] [MOD 111 R/M] [DISP-LO] [DISP-HI] [DATA-8]
+            CMP REG8/MEM8, IMM8
+        [81] [MOD 111 R/M] [DISP-LO] [DISP-HI]
+         [DATA-LO] [DATA-HI]
+            CMP REG16/MEM16, IMM16
+        [82] [MOD 111 R/M] [DISP-LO] [DISP-HI] [DATA-8]
+            CMP REG8/MEM8, IMM8
+        [83] [MOD 111 R/M] [DISP-LO] [DISP-HI] [DATA-SX]
+            CMP REG16/MEM16, IMM8
+CMPS(CoMPare String): Ox Sx Zx Ax Px Cx
+        Subtracts the destination byte/word (pointed to
+        by DI) from the source byte/word (pointed to by SI)
+        and discards the result, affecting the flags.
+        It also moves both SI and DI to the next element of
+        the string.
+        [A6]
+            CMPS DEST-STR8, SRC-STR8
+        [A7]
+            CMPS DEST-STR16, SRC-STR16
+CWD(Convert Word to Double-word):
+        Extends the sign of the word in AX throughout DX
+        so that a signed double-length dividend may be
+        generated before a word division.
+        [99]
+            CWD
+DAA(Decimal Adjust for Addition): Ou Sx Zx Ax Px Cx
+        Corrects the value of AL after a BCD addition,
+        so that the high order nibble of AL is a valid
+        BCD digit, as is the low order.
+        [27]
+            DAA
+DAS(Decimal Adjust for Subtraction): Ou Sx Zx Ax Px Cx
+        Corrects the result of a previous subtraction
+        of two BCD operands changing the content of
+        AL into a pair of valid packed decimal digits.
+        [2F]
+            DAS
+DEC(DECrement): Ox Sx Zx Ax Px
+        (destination)
+        Decrement the destination.
+        [48]
+            DEC AX
+        [49]
+            DEC CX
+        [4A]
+            DEC DX
+        [4B]
+            DEC BX
+        [4C]
+            DEC SP
+        [4D]
+            DEC BP
+        [4E]
+            DEC SI
+        [4F]
+            DEC DI
+        [FE] [MOD 001 R/M] [DISP-LO] [DISP-HI]
+            DEC REG8/MEM8
+        [FF] [MOD 001 R/M] [DISP-LO] [DISP-HI]
+            DEC MEM16
+DIV(DIVision): Ou Su Zu Au Pu Cu
+        (source)
+        Performs an unsigned division of the accumulator
+        and its extension by the source operant. If the
+        source operand is a byte then it is to be
+        divided into the double-length dividend assumed
+        to be in AH-AL, the single-length quotient is
+        returned in AL, and the single-length remainder in
+        AH. If the source operand is a word then it is
+        divided into the double-length dividend in
+        registers AX and DX. The single-length quotient
+        is returned in AX and the single-length remainder
+        is returned in DX. If the quotient exceeds the
+        capacity of its destination register a type 0
+        interrupt is generated and the quotient and
+        remainder are undefined. Nonintegral quotients
+        are truncated into integers.
+        [F6] [MOD 110] [DISP-LO] [DISP-HI]
+            DIV REG8/MEM8
+        [F7] [MOD 110 R/M] [DISP-LO] [DISP-HI]
+            DIV REG16/MEM16, IMM16
+ESC(ESCape):
+        (external-opcode, source)
+        Provides means for an external processor to
+        obtain an opcode and possibly a memory operand
+        from the 8088/8086. The external opcode is a
+        6-bit immediate constnat that the assembler
+        encodes in the machine instruction it builds. An
+        external processor may monitor the system bus
+        and capture this opcode when ESC is fetched. If
+        the source operand is a register, the processor
+        does nothing. If the source opernd is a memory
+        variable, the processor obtains the operand from
+        memory and discards it. An external processor
+        may capture the memory operand when the processor
+        reads it from memory.
+        [D8] [MOD 000 R/M] [1XXX] [MOD YYY R/M] [DISP-LO] [DISP-HI]
+         [DF] [MOD 111 R/M]
+            ESC OPCODE, SOURCE
+HLT(HaLT):
+        Causes the 8086/8088 to enter the halt state. The
+        processor leaves the halt state upon activation
+        of the RESET line, upon reciept of a non-maskable
+        interrupt request on NMI or if maskable-interrupts
+        are enabled a reciept from those as well.
+        [F3]
+            HLT
+IDIV(Integer DIVision): Ou Su Zu Au Pu Cu
+        (source)
+        Performs a signed division of the accumulator
+        and its extension by the source operant. If the
+        source operand is a byte then it is to be
+        divided into the double-length dividend assumed
+        to be in AH-AL, the single-length quotient is
+        returned in AL, and the single-length remainder in
+        AH. If the source operand is a word then it is
+        divided into the double-length dividend in
+        registers AX and DX. The single-length quotient
+        is returned in AX and the single-length remainder
+        is returned in DX. If the quotient exceeds the
+        capacity of its destination register a type 0
+        interrupt is generated and the quotient and
+        remainder are undefined. Nonintegral quotients
+        are truncated (towards 0) into integers.
+        [F6] [MOD 111] [DISP-LO] [DISP-HI]
+            IDIV REG8/MEM8
+        [F7] [MOD 111 R/M] [DISP-LO] [DISP-HI]
+            IDIV REG16/MEM16, IMM16
+IMUL(Integer MULtiplication): Ox Su Zu Au Pu Cx
+        (source)
+        Performs a signed multiplication between the
+        source operand and the accumulator. If the
+        source is a byte, then it shall be multiplied
+        with AL, and if it is a word, with AX. The
+        double-length result is stored in AH-AL for
+        a byte source, and DX-AX for a word source.
+        If the top half of the double-length result
+        is not the sign extension of the lower half
+        of the result, CF and OF are set.
+        [F6] [MOD 101] [DISP-LO] [DISP-HI]
+            IMUL REG8/MEM8
+        [F7] [MOD 101 R/M] [DISP-LO] [DISP-HI]
+            IMUL REG16/MEM16, IMM16
+IN(INput):
+        (accumulator, port)
+        Transfers a byte/word from to AL/AX from an
+        input port. The port number may be specified
+        either with an immediate byte constant or with
+        a number placed in the DX register allowing
+        variable access to ports numbered 0 through
+        0xFFFF.
+        [E4] [DATA-8]
+            IN AL, IMM8
+        [E5] [DATA-8]
+            IN AX, IMM8
+        [EC]
+            IN AL, DX
+        [ED]
+            IN AX, DX
+INC(INCrement): Ox Sx Zx Ax Px
+        (destination)
+        Increments the destination.
+        [40]
+            INC AX
+        [41]
+            INC CX
+        [42]
+            INC DX
+        [43]
+            INC BX
+        [44]
+            INC SP
+        [45]
+            INC BP
+        [46]
+            INC SI
+        [47]
+            INC DI
+        [FE] [MOD 000 R/M] [DISP-LO] [DISP-HI]
+            INC REG8/MEM8
+        [FF] [MOD 000 R/M] [DISP-LO] [DISP-HI]
+            INC MEM16
+INT(INTerrupt): I0 T0
+        (interrupt-type)
+        Activates the interrupt procedure specified by
+        the interrupt-type operand, it does an operation
+        equivalent PUSHF and then clears TF and IF to
+        disable single-step and maskable interrupts.
+        The flags are stored in the format used by the
+        PUSHF instruction. CS and IP are pushed onto
+        the stack, and then loaded from the address
+        calculated from interrupt-type multiplied by four,
+        where IP is the first word, and CS is the second.
+        If interrupt-type = 3 the assembler generates a
+        short 1 byte form of the instruction known as the
+        breakpoint interrupt.
+        [CC]
+            INT 3
+        [CD] [DATA-8]
+            INT IMM8
+INTO(INTerrupt if Overflow): I0 T0
+        Generates a software interrupt if OF is set.
+        Otherwise control proceeds to the following
+        instruction without activating the interrupt
+        procedure. INTO loads the interrupt of type
+        four. It otherwise acts as INT should.
+        [CE]
+            INTO
+IRET(Interrupt RETurn): Or Dr Ir Tr Sr Zr Ar Pr Cr
+        Returns from an interrupt (hardware or software)
+        popping IP, CS and the flags from the stack.
+        [CF]
+            IRET
+JA(Jump if Above):
+        (short-label)
+        Executes a SHORT JMP if both CF and ZF are clear.
+        [77] [IP-INC8]
+            JA SHORT-LABEL
+JAE(Jump if Above or Equal):
+        (short-label)
+        Executes a SHORT JMP if CF is clear.
+        [73] [IP-INC8]
+            JAE SHORT-LABEL
+JB(Jump if Below):
+        (short-label)
+        Executes a SHORT JMP if CF is set.
+        [72] [IP-INC8]
+            JB SHORT-LABEL
+JBE(Jump if Below or Equal):
+        (short-label)
+        Executes a SHORT JMP if CF or ZF is set.
+        [76] [IP-INC8]
+            JBE SHORT-LABEL
+JC(Jump if Carry):
+        (short-label)
+        Executes a SHORT JMP if CF is clear.
+        [72] [IP-INC8]
+            JC SHORT-LABEL
+JCXZ(Jump if CX is Zero):
+        (short-label)
+        Transfers control to the target operand if CX
+        is zero.
+        [E3] [IP-INC8]
+            JCXZ SHORT-LABEL
+JE(Jump if Equal):
+        (short-label)
+        Executes a SHORT JMP if ZF is set.
+        [74] [IP-INC8]
+            JE SHORT-LABEL
+JG(Jump if Greater):
+        (short-label)
+        Executes a SHORT JMP if ZF is clear and SF = OF.
+        [7F] [IP-INC8]
+            JG SHORT-LABEL
+JGE(Jump if Greater or Equal):
+        (short-label)
+        Executes a SHORT JMP if SF = OF.
+        [7D] [IP-INC8]
+            JGE SHORT-LABEL
+JL(Jump if Lesser):
+        (short-label)
+        Executes a SHORT JMP if SF =/= OF.
+        [7C] [IP-INC8]
+            JL SHORT-LABEL
+JLE(Jump if Lesser or Equal):
+        (short-label)
+        Executes a SHOR JMP if ZF is set or SF =/= OF.
+        [7E] [IP-INC8]
+            JLE SHORT-LABEL
+JMP(JuMP):
+        (target)
+        Unconditionally transfers control to the target.
+        An intrasegment direct JMP adds the relative
+        displacement to IP. If the assembler can determine
+        that the target is within 127 bytes from the JMP
+        it automatically generates a two byte form of
+        this instruction named a SHORT JMP; otherwise
+        a NEAR JMP is generated, which may address +-32k.
+        An intrasegment indirect JMP may be made either
+        through memory or a 16-bit register, the value
+        of IP is replaced by the value of the argument.
+        An intersegment direct JMP replaces IP and CS
+        with the values specified.
+        An intersegment indirect JMP may only be made
+        through memory, IP is taken from the first
+        word, and CS from the second.
+        [E9] [IP-INC-LO] [IP-INC-HI]
+            JMP NEAR-LABEL
+        [EA] [IP-LO] [IP-HI] [CS-LO] [CS-HI]
+            JMP FAR-LABEL
+        [EB] [IP-INC8]
+            JMP SHORT-LABEL
+        [FF] [MOD 100 R/M] [DISP-LO] [DISP-HI]
+            JMP REG16/MEM16 (intra)
+        [FF] [MOD 101 R/M] [DISP-LO] [DISP-HI]
+            JMP MEM16 (inter)
+JNC(Jump if Not Carry):
+        (short-label)
+        Executes a SHORT JMP if CF is cleared.
+        [73] [IP-INC8]
+            JNC SHORT-LABEL
+JNE(Jump if Not Equal):
+        (short-label)
+        Executes a SHORT JMP if ZF is cleared.
+        [75] [IP-INC8]
+            JNE SHORT-LABEL
+JNO(Jump if Not Overflow):
+        (short-label)
+        Executes a SHORT JMP if OF is cleared.
+        [71] [IP-INC8]
+            JNO SHORT-LABEL
+JNP(Jump if Not Parity):
+        (short-label)
+        Executes a SHORT JMP if PF is cleared.
+        [7B] [IP-INC8]
+            JNP SHORT-LABEL
+JNS(Jump if Not Sign):
+        (short-label)
+        Executes a SHORT JMP if SF is cleared.
+        [79] [IP-INC8]
+            JNS SHORT-LABEL
+JO(Jump if Overflow):
+        (short-label)
+        Executes a SHORT JMP if OF is set.
+        [70] [IP-INC8]
+            JO SHORT-LABEL
+JP(Jump if Parity):
+        (short-label)
+        Executes a SHORT JMP if PF is set.
+        [7A] [IP-INC8]
+            JP SHORT-LABEL
+JS(Jump if Sign):
+        (short-label)
+        Executes a SHORT JMP if SF is set.
+        [78] [IP-INC8]
+            JS SHORT-LABEL
+LAHF(Load AH from Flags):
+        Copies SF, ZF, AF, PF, and CF into
+        bits 7, 6, 4, 2, and 0, respectivly, of
+        register AH. The contents of bits 5, 3,
+        and 1 is undefined. [[Mainly included for
+        8080/8085 compatibility reasons]]
+        [9F]
+            LAHF
+LDS(Load pointer using DS):
+        (destination, source)
+        Transfers a 32 bit pointer variable from the
+        source operand to the destination operand and
+        register DS. Where the offset portion of the
+        source operand shall be transfered to the
+        destination operand, the segment portion shall
+        be passed to DS.
+        [C5] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            LDS REG16, MEM16
+LEA(Load Effective Address):
+        (destination, source)
+        Transfers the offset of the source operand
+        (rather than its value) to the destination
+        operand. The source operand *must* be memory.
+        [8D] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            LEA REG16, MEM16
+LES(Load pointer using ES):
+        (destination, source)
+        Transfers a 32 bit pointer variable from the
+        source operand to the destination operand and
+        register ES. Where the offset portion of the
+        source operand shall be transfered to the
+        destination operand, the segment portion shall
+        be passed to ES.
+        [C4] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            LES REG16, MEM16
+LOCK(LOCK bus):
+        A one-byte prefix which causes the 8086/8088
+        to assert its LOCK signal while the following
+        instruction executes.
+        [F0]
+            LOCK
+LODS(LOaD String):
+        Sets the byte/word from the element pointed to
+        by SI to the accumulator AL/AX and updates SI
+        to the next element.
+        [AC]
+            LODS SRC-STR8
+        [AD]
+            LODS SRC-STR16
+LOOP(LOOP):
+        (short label)
+        LOOP decrements CX by 1 and transfers control to
+        the target operand if CX is not 0.
+        [E2] [IP-INC8]
+            LOOP
+LOOPE(LOOP if Equal):
+        (short label)
+        Similar to the LOOP instruction except that
+        control shant be transferred if ZF is cleared.
+        [E1] [IP-INC8]
+            LOOPE
+LOOPNE(LOOP if Not Equal):
+        (short label)
+        Similar to LOOPE except that ZF must not be set
+        for control to be transferred.
+        [E0] [IP-INC8]
+            LOOPNE
+MOV(MOVe):
+        (destination, source)
+        Transfer a byte/word from the source operand
+        to the destination operand.
+        [88] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            MOV REG8/MEM8, REG8
+        [89] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            MOV REG16/MEM16, REG16
+        [8A] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            MOV REG8, REG8/MEM8
+        [8B] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            MOV REG16, REG16/MEM16
+        [8C] [MOD 0SR R/M] [DISP-LO] [DISP-HI]
+            MOV REG16/MEM16, SEGREG
+        [8E] [MOD 0SR R/M] [DISP-LO] [DISP-HI]
+            MOV SEGREG, REG16/MEM16
+        [A0] [ADDR-LO] [ADDR-HI]
+            MOV AL, MEM8
+        [A1] [ADDR-LO] [ADDR-HI]
+            MOV AX, MEM16
+        [A2] [ADDR-LO] [ADDR-HI]
+            MOV MEM8, AL
+        [A3] [ADDR-LO] [ADDR-HI]
+            MOV MEM16, AX
+        [B0] [DATA-8]
+            MOV AL, IMM8
+        [B1] [DATA-8]
+            MOV CL, IMM8
+        [B2] [DATA-8]
+            MOV DL, IMM8
+        [B3] [DATA-8]
+            MOV BL, IMM8
+        [B4] [DATA-8]
+            MOV AH, IMM8
+        [B5] [DATA-8]
+            MOV CH, IMM8
+        [B6] [DATA-8]
+            MOV DH, IMM8
+        [B7] [DATA-8]
+            MOV BH, IMM8
+        [B8] [DATA-8]
+            MOV AX, IMM8
+        [B9] [DATA-8]
+            MOV CX, IMM8
+        [BA] [DATA-8]
+            MOV DX, IMM8
+        [BB] [DATA-8]
+            MOV BX, IMM8
+        [BC] [DATA-8]
+            MOV SP, IMM8
+        [BD] [DATA-8]
+            MOV BP, IMM8
+        [BE] [DATA-8]
+            MOV SI, IMM8
+        [BF] [DATA-8]
+            MOV DI, IMM8
+        [C6] [MOD 000 R/M] [DISP-LO] [DISP-HI] [DATA-8]
+            MOV MEM8, IMM8
+        [C7] [MOD 000 R/M] [DISP-LO] [DISP-HI] [DATA-LO] [DATA-HI]
+            MOV MEM16, IMM16
+MOVS(MOVe String):
+        Transfers a byte/word (MOVSB and MOVSW denote
+        which is being done) from the source string
+        (pointed to by SI) to the destination string
+        (pointed to by DI). When used in conjunction with
+        REP, MOVS performs a memory-memory block-transfer.
+        It also moves both SI and DI to the next element
+        of the string.
+        [A4]
+            MOVS DEST-STR8, SRC-STR8
+        [A5]
+            MOVS DEST-STR16, SRC-STR16
+MUL(Multiplication): Ox Su Zu Au Pu Cx
+        (source)
+        Performs an unsigned multiplaction between the
+        source operand and the accumulator, if the
+        source is a byte, then it is multiplied by the
+        register AL and the double-length result is
+        returned in AH and AL. If the source operand
+        is a word then it is multiplied by AX and the
+        double-length result is returned in DX and AX.
+        The operands are treated as unsigned binary
+        numbers (see AAM). If the upper half of the
+        double-length result is nonzer, CF and OF are
+        set.
+        [F6] [MOD 100] [DISP-LO] [DISP-HI]
+            MUL REG8/MEM8
+        [F7] [MOD 100 R/M] [DISP-LO] [DISP-HI]
+            MUL REG16/MEM16, IMM16
+NEG(NEGate): Ox Sx Zx Ax Px C1
+        (destination)
+        Set the destination operand to its two's
+        complement negative, note that CF is unset in
+        the case that the result is -1.
+        [F6] [MOD 011] [DISP-LO] [DISP-HI]
+            NEG REG8/MEM8
+        [F7] [MOD 011 R/M] [DISP-LO] [DISP-HI]
+            NEG REG16/MEM16, IMM16
+NOP(NO oPeration):
+        Does nothing except pass cycles of the CPU.
+        [90]
+            NOP
+NOT(logical NOT):
+        (destination)
+        Inverts the bits of the destination operand.
+        [F6] [MOD 010 R/M] [DISP-LO] [DISP-HI]
+            NOT REG8/MEM8
+        [F7] [MOD 010 R/M] [DISP-LO] [DISP-HI]
+            NOT REG16/MEM16, IMM16
+OR(logical OR): O0 Sx Zx Au Px C0
+        (destination, source)
+        Performs a logical or of the two operands.
+        [08] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            OR REG8/MEM8, REG8
+        [09] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            OR REG16/MEM16, REG16
+        [0A] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            OR REG8, REG8/MEM8
+        [0B] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            OR REG16, REG16/MEM16
+        [0C] [DATA-8]
+            OR AL, IMM8
+        [0D] [DATA-LO] [DATA-HI]
+            OR AL, IMM8
+        [80] [MOD 001 R/M] [DISP-LO] [DISP-HI] [DATA-8]
+            OR REG8/MEM8, IMM8
+        [81] [MOD 001 R/M] [DISP-LO] [DISP-HI]
+         [DATA-LO] [DATA-HI]
+            OR REG16/MEM16, IMM16
+OUT(OUTput):
+        (port, accumulator)
+        Transfers a byte/word from the AL/AX register
+        to an output port (the index of which being
+        specified either by a byte immediate, or the
+        value of DX.
+        [E6] [DATA-8]
+            OUT AL, IMM8
+        [E7] [DATA-8]
+            OUT AX, IMM8
+        [EE]
+            OUT AL, DX
+        [EF]
+            OUT AX, DX
+POP(POP):
+        (destination)
+        Set the destination to the word pointed to
+        by SP and increment SP by two.
+        [07]
+            POP ES
+        [17]
+            POP SS
+        [1F]
+            POP DS
+        [58]
+            POP AX
+        [59]
+            POP CX
+        [5A]
+            POP DX
+        [5B]
+            POP BX
+        [5C]
+            POP SP
+        [5D]
+            POP BP
+        [5E]
+            POP SI
+        [5F]
+            POP DI
+        [8F] [MOD 000 R/M] [DISP-LO] [DISP-HI]
+            POP REG16/MEM16
+POPF(POP Flags): Or Dr Ir Tr Sr Zr Ar Pr Cr
+        Sets the flags register to the word pointed to
+        by SP and increments SP by two.
+        [9D]
+            POPF
+PUSH(PUSH):
+        (source)
+        Decrements SP by two and then transfers a
+        word from source to the top of the stack now
+        pointed to by SP.
+        [06]
+            PUSH ES
+        [0E]
+            PUSH CS
+        [16]
+            PUSH SS
+        [1E]
+            PUSH DS
+        [50]
+            PUSH AX
+        [51]
+            PUSH CX
+        [52]
+            PUSH DX
+        [53]
+            PUSH BX
+        [54]
+            PUSH SP
+        [55]
+            PUSH BP
+        [56]
+            PUSH SI
+        [57]
+            PUSH DI
+        [FF] [MOD 110 R/M] [DISP-LO] [DISP-HI]
+            PUSH MEM16
+PUSHF(PUSH Flags):
+        Decrements SP by two and then transfers all
+        flags to the word pointed to by SP.
+        [9C]
+            PUSHF
+RCL(Rotate Left through Carry): Ox Cx
+        (destination, count)
+        Rotates the bits in the destination operand 
+        to the left by the number of bits, where CF
+        is considered `part` of the destination, that
+        is CF may be considered the new "High order" bit
+        in the 9 bit composite object.
+        [D0] [MOD 010 R/M] [DISP-LO] [DISP-HI]
+            RCL REG8/MEM8, 1
+        [D1] [MOD 010 R/M] [DISP-LO] [DISP-HI]
+            RCL REG16/MEM16, 1
+        [D2] [MOD 010 R/M] [DISP-LO] [DISP-HI]
+            RCL REG8/MEM8, CL
+        [D3] [MOD 010 R/M] [DISP-LO] [DISP-HI]
+            RCL REG16/MEM16, CL
+RCR(Rotate Right through Carry): Ox Cx
+        (destination, count)
+        Similar to RCL except that the bits in the
+        destination (+ CF) is rotated right rather than
+        left.
+        [D0] [MOD 011 R/M] [DISP-LO] [DISP-HI]
+            RCR REG8/MEM8, 1
+        [D1] [MOD 011 R/M] [DISP-LO] [DISP-HI]
+            RCR REG16/MEM16, 1
+        [D2] [MOD 011 R/M] [DISP-LO] [DISP-HI]
+            RCR REG8/MEM8, CL
+        [D3] [MOD 011 R/M] [DISP-LO] [DISP-HI]
+            RCR REG16/MEM16, CL
+REP(REPeat string operation):
+        A prefix byte for string operations.
+        Used in conjunction with MOVS and STOS
+        instructions and are to be interpretted as
+        `repeat while not end of string` (CX =/= 0).
+        [F3]
+            REP
+REPE(REPeat string operation while Equal):
+        Used with CMPS and SCAS and require ZF to be
+        set, otherwise the repetition shall be terminated,
+        it is physically the same prefix as REP, simply
+        used before CMPS and SCAS.
+        [F3]
+            REP
+REPNE(REPeat string operation while Not Equal):
+        Similar to REPE, except that it requires ZF to
+        be cleared.
+        [F2]
+            REPNE
+RET(RETurn):
+        (optional pop value)
+        Returns control from a procedure back to the
+        instruction following a call which activiated
+        the procedure. The assembler generates an
+        intrasegment RET if the procedure has been
+        defined NEAR, or an intrasegment if it has
+        been defined FAR. RET pops the word at the
+        top of the stack into the instruction pointer.
+        If RET is intrasegment then CS is popped from
+        the stack. If a pop value has been specified
+        RET adds that value to SP, so that parameters
+        pushed onto the stack before the CALL may be
+        discarded.
+        [C2] [DATA-LO] [DATA-HI]
+            RET IMM16 (intraseg)
+        [C3]
+            RET  (intraseg)
+        [CA] [DATA-LO] [DATA-HI]
+            RET IMM16 (interseg)
+        [CB]
+            RET (interseg)
+ROL(ROtate Left): Ox Cx
+        (destination, count)
+        Rotates the destination left by the number of
+        bits specified in the count operand.
+        [D0] [MOD 000 R/M] [DISP-LO] [DISP-HI]
+            ROL REG8/MEM8, 1
+        [D1] [MOD 000 R/M] [DISP-LO] [DISP-HI]
+            ROL REG16/MEM16, 1
+        [D2] [MOD 000 R/M] [DISP-LO] [DISP-HI]
+            ROL REG8/MEM8, CL
+        [D3] [MOD 000 R/M] [DISP-LO] [DISP-HI]
+            ROL REG16/MEM16, CL
+ROR(ROtate Right): Ox Cx
+        (destination, count)
+        Similar to ROL except that the bits in the
+        destination are rotated right rather than left.
+        [D0] [MOD 001 R/M] [DISP-LO] [DISP-HI]
+            ROR REG8/MEM8, 1
+        [D1] [MOD 001 R/M] [DISP-LO] [DISP-HI]
+            ROR REG16/MEM16, 1
+        [D2] [MOD 001 R/M] [DISP-LO] [DISP-HI]
+            ROR REG8/MEM8, CL
+        [D3] [MOD 001 R/M] [DISP-LO] [DISP-HI]
+            ROR REG16/MEM16, CL
+SAHF(Store AH into Flags): Sr Zr Ar Pr Cr
+        Loads SF, ZF, AF, PF, and CF from
+        bits 7, 6, 4, 2, and 0, respectivly, of
+        register AH. [[Mainly included for
+        8080/8085 compatibility reasons]]
+        [9E]
+            SAHF
+SHR(Shift Arithmetic Left): Ox Cx
+        (destination, count)
+        The destination operand is shifted
+        left by the number of bits specified by the
+        count operand. Zeroes are shifted on right.
+        If the sign bit retains its original value,
+        OF is cleared.
+        [D0] [MOD 100 R/M] [DISP-LO] [DISP-HI]
+            SAL REG8/MEM8, 1
+        [D1] [MOD 100 R/M] [DISP-LO] [DISP-HI]
+            SAL REG16/MEM16, 1
+        [D2] [MOD 100 R/M] [DISP-LO] [DISP-HI]
+            SAL REG8/MEM8, CL
+        [D3] [MOD 100 R/M] [DISP-LO] [DISP-HI]
+            SAL REG16/MEM16, CL
+SAR(Shift Arithmetic Right): Ox Sx Zx Au Px Cx
+        (destination, count)
+        Shifts the bits in the destination operand by
+        the number of bits specified by the count operand.
+        Bits equal to the original sign bit are shifted
+        in on the left.
+        [D0] [MOD 111 R/M] [DISP-LO] [DISP-HI]
+            SAR REG8/MEM8, 1
+        [D1] [MOD 111 R/M] [DISP-LO] [DISP-HI]
+            SAR REG16/MEM16, 1
+        [D2] [MOD 111 R/M] [DISP-LO] [DISP-HI]
+            SAR REG8/MEM8, CL
+        [D3] [MOD 111 R/M] [DISP-LO] [DISP-HI]
+            SAR REG16/MEM16, CL
+SBB(SuBtract with Borrow): Ox Sx Zx Ax Px Cx
+        (destination, source)
+        Subtracts the source and the carry flag from
+        the destination operand. Both operands may be
+        signed or unsigned binary numbers (see AAS and
+        DAS).
+        [18] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            SBB REG8/MEM8, REG8
+        [19] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            SBB REG16/MEM16, REG16
+        [1A] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            SBB REG8, REG8/MEM8
+        [1B] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            SBB REG16, REG16/MEM16
+        [1C] [DATA-8]
+            SBB AL, IMM8
+        [1D] [DATA-LO] [DATA-HI]
+            SBB AX, IMM16
+        [80] [MOD 011 R/M] [DISP-LO] [DISP-HI] [DATA-8]
+            SBB REG8/MEM8, IMM8
+        [81] [MOD 011 R/M] [DISP-LO] [DISP-HI]
+         [DATA-LO] [DATA-HI]
+            SBB REG16/MEM16, IMM16
+        [82] [MOD 011 R/M] [DISP-LO] [DISP-HI] [DATA-8]
+            SBB REG8/MEM8, IMM8
+        [83] [MOD 011 R/M] [DISP-LO] [DISP-HI] [DATA-SX]
+            SBB REG16/MEM16, IMM8
+SCAS(SCAn String): Ox Sx Zx Ax Px Cx
+        Subtracts the string element (pointed to by DI)
+        form the content of AL/AX and discards the result,
+        updating the flags. SCAS updates DI to the next
+        element.
+        [AE]
+            SCAS DEST-STR8
+        [AF]
+            SCAS DEST-STR16
+SHR(Shift logical Right): Ox Cx
+        (destination, count)
+        Shifts the bits in the destination operand
+        to the right by the count operand, zeroes are
+        shifted in on the left. If the sign bit retains
+        its original value, OF is cleared.
+        [D0] [MOD 101 R/M] [DISP-LO] [DISP-HI]
+            SHR REG8/MEM8, 1
+        [D1] [MOD 101 R/M] [DISP-LO] [DISP-HI]
+            SHR REG16/MEM16, 1
+        [D3] [MOD 101 R/M] [DISP-LO] [DISP-HI]
+            SHR REG16/MEM16, CL
+STC(SeT Carry flag): C1
+        Sets CF.
+        [F9]
+            STC
+STD(SeT Direction flag): D1
+        Sets DF. Causing the string instructions to
+        auto-increment the SI and DI registers.
+        [FD]
+            STD
+STI(SeT Interrupt flag): I1
+        Sets IF. Causing maskable interrupts to be enabled.
+        [FB]
+            STI
+STOS(STOre byte or word String):
+        Transfers a byte/word from the accumulator AL/AX
+        to the element addressed by DI and updates DI to
+        the next element.
+        [AA]
+            STOS DEST-STR8
+        [AB]
+            STOS DEST-STR16
+SUB(SUBtraction): Ox Sx Zx Ax Px Cx
+        (destination, source)
+        Subtracts the source from the destination
+        operand. The operands may be signed or unsigned
+        binary numbers (see AAS and DAS).
+        [28] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            SUB REG8/MEM8, REG8
+        [29] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            SUB REG16/MEM16, REG16
+        [2A] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            SUB REG8, REG8/MEM8
+        [2B] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            SUB REG16, REG16/MEM16
+        [2C] [DATA-8]
+            SUB AL, IMM8
+        [2D] [DATA-LO] [DATA-HI]
+            SUB AL, IMM16
+        [80] [MOD 101 R/M] [DISP-LO] [DISP-HI] [DATA-8]
+            SUB REG8/MEM8, IMM8
+        [81] [MOD 101 R/M] [DISP-LO] [DISP-HI]
+         [DATA-LO] [DATA-HI]
+            SUB REG16/MEM16, IMM16
+        [82] [MOD 101 R/M] [DISP-LO] [DISP-HI] [DATA-8]
+            SUB REG8/MEM8, IMM8
+        [83] [MOD 101 R/M] [DISP-LO] [DISP-HI] [DATA-SX]
+            SUB REG16/MEM16, IMM8
+TEST(TEST): O0 Sx Zx Au Px C0
+        (destination, source)
+        Performs a logical and between the two operands
+        without storing the result, similar to the CMP
+        instruction.
+        [84] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            TEST REG8/MEM8, REG8
+        [85] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            TEST REG16/MEM16, REG16
+        [A8] [DATA-8]
+            TEST AL, IMM8
+        [A9] [DATA-LO] [DATA-HI]
+            TEST AX, IMM16
+        [F6] [MOD 000 R/M] [DISP-LO] [DISP-HI] [DATA-8]
+            TEST REG8/MEM8, IMM8
+        [F7] [MOD 000 R/M] [DISP-LO] [DISP-HI] [DATA-8]
+            TEST REG16/MEM16, IMM16
+WAIT(WAIT):
+        WAIT causes the CPU to enter the wait state as
+        long as the TEST line is not active.
+        [9B]
+            WAIT
+XCHG(eXCHanGe):
+        (destination, source)
+        Swap the value of the source and destination.
+        [86] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            XCHG REG8, REG8/MEM8
+        [87] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            XCHG REG16, REG16/MEM16
+        [90]
+            XCHG AX, AX
+        [91]
+            XCHG AX, CX
+        [92]
+            XCHG AX, DX
+        [93]
+            XCHG AX, BX
+        [94]
+            XCHG AX, SP
+        [95]
+            XCHG AX, BP
+        [96]
+            XCHG AX, SI
+        [97]
+            XCHG AX, DI
+XLAT(TransLATe):
+        Replaces the value of al with that of [DS:BX+AL],
+        or in more precise terms: Replaces the a byte in
+        AL with a byte from a 256 user encoded table, BX
+        is assumed to point to said table.
+        [D7]
+            XLAT SOURCE-TABLE
+XOR(logical eXclusive OR): O0 Sx Zx Au Px C0
+        (destination, source)
+        Performs the logical exclusive or of the two
+        operands.
+        [30] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            XOR REG8/MEM8, REG8
+        [31] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            XOR REG16/MEM16, REG16
+        [32] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            XOR REG8, REG8/MEM8
+        [33] [MOD REG R/M] [DISP-LO] [DISP-HI]
+            XOR REG16, REG16/MEM16
+        [34] [DATA-8]
+            XOR AL, IMM8
+        [35] [DATA-16]
+            XOR AX, IMM16
+        [80] [MOD 110 R/M] [DISP-LO] [DISP-HI] [DATA-8]
+            XOR REG8/MEM8, IMM8
+        [81] [MOD 110 R/M] [DISP-LO] [DISP-HI]
+         [DATA-LO] [DATA-HI]
+            XOR REG16/MEM16, IMM16
