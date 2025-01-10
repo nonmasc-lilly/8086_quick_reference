@@ -815,21 +815,21 @@ MOV(MOVe):
         [B7] [DATA-8]
             MOV BH, IMM8
         [B8] [DATA-8]
-            MOV AX, IMM8
+            MOV AX, IMM16
         [B9] [DATA-8]
-            MOV CX, IMM8
+            MOV CX, IMM16
         [BA] [DATA-8]
-            MOV DX, IMM8
+            MOV DX, IMM16
         [BB] [DATA-8]
-            MOV BX, IMM8
+            MOV BX, IMM16
         [BC] [DATA-8]
-            MOV SP, IMM8
+            MOV SP, IMM16
         [BD] [DATA-8]
-            MOV BP, IMM8
+            MOV BP, IMM16
         [BE] [DATA-8]
-            MOV SI, IMM8
+            MOV SI, IMM16
         [BF] [DATA-8]
-            MOV DI, IMM8
+            MOV DI, IMM16
         [C6] [MOD 000 R/M] [DISP-LO] [DISP-HI] [DATA-8]
             MOV MEM8, IMM8
         [C7] [MOD 000 R/M] [DISP-LO] [DISP-HI] [DATA-LO] [DATA-HI]
@@ -1086,7 +1086,7 @@ SAHF(Store AH into Flags): Sr Zr Ar Pr Cr
         8080/8085 compatibility reasons]]
         [9E]
             SAHF
-SHR(Shift Arithmetic Left): Ox Cx
+SAL(Shift Arithmetic Left): Ox Cx
         (destination, count)
         The destination operand is shifted
         left by the number of bits specified by the
